@@ -1,2 +1,2 @@
 # Q-Compiler
-Q编译器
+Q-编译器
