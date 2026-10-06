@@ -73,6 +73,50 @@ class FlowGraphTestCase(unittest.TestCase):
         self.assertNotIn(t2, i2.live_out)
         self.assertNotIn(t2, i3.live_in)
 
+    def test_fall_through_is_single_block(self):
+        """无跳转的相邻指令属于同一基本块（线性流不产生边）"""
+        t1 = ExampleRegister("t1")
+        t2 = ExampleRegister("t2")
+        i1 = Def(t1)
+        i2 = Def(t2)
+        cfg = FlowGraph([i1, i2])
+        # 只有第一条指令是块首（leader），后续指令归入该块
+        node = cfg.get_node(i1)
+        self.assertEqual(node.instructions, [i1, i2])
+
+    def test_live_ranges_recorded(self):
+        """活动区间（_live_ranges）记录寄存器活跃的指令跨度"""
+        t1 = ExampleRegister("t1")
+        t2 = ExampleRegister("t2")
+        t3 = ExampleRegister("t3")
+        i1 = Def(t1)
+        i2 = Def(t2)
+        i3 = DefUse(t3, t1)
+        cfg = FlowGraph([i1, i2, i3])
+        cfg.calculate_liveness()
+        ranges = cfg._live_ranges
+        self.assertIn(t1, ranges)
+        # t1 的区间跨越 (i1, i2) 与 (i2, i3)
+        self.assertIn((i1, i2), ranges[t1])
+        self.assertIn((i2, i3), ranges[t1])
+
+    def test_node_instructions(self):
+        """节点携带其基本块的指令列表与 gen/kill 信息"""
+        t1 = ExampleRegister("t1")
+        t2 = ExampleRegister("t2")
+        i1 = Def(t1)
+        i2 = DefUse(t2, t1)
+        cfg = FlowGraph([i1, i2])
+        node = cfg.get_node(i1)
+        self.assertEqual(node.instructions, [i1, i2])
+        # 块级 kill = 被定义的寄存器集合；块级 gen 只统计
+        # "在本块内使用、且未在本块内先定义"的寄存器。
+        # t1 在块内先被 Def 定义、后被 DefUse 使用 → 只进 kill 不进 gen
+        self.assertIn(t1, node.kill)
+        self.assertIn(t2, node.kill)
+        self.assertNotIn(t1, node.gen)
+        self.assertNotIn(t2, node.gen)
+
 
 if __name__ == "__main__":
     unittest.main()
